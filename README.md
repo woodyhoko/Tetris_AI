@@ -1,7 +1,7 @@
 # Tetris_AI
 
 Tetris game in ASM code with
-Implemented self learning AI.
+Designed self learning AI.
 
 example:
 https://youtu.be/qrmSmP2yMEo
