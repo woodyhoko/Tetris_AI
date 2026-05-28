@@ -98,7 +98,6 @@ function init(){board=Array.from({length:ROWS},()=>new Array(COLS).fill(0));scor
 
 function rotate(s){return s[0].map((_,c)=>s.map(r=>r[c]).reverse());}
 function spawnPiece(){
-  const candidates=hellMode?null:null;
   piece={...PIECES[(Math.random()*PIECES.length)|0]};
   piece.shape=[...piece.shape.map(r=>[...r])];
   px=Math.floor((COLS-piece.shape[0].length)/2);py=0;
