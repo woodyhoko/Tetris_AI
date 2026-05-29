@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tetris AI — Written in x86 Assembly</title>
+<meta name="description" content="A fully playable Tetris with a self-learning heuristic AI, an adversarial Hell Mode, and a training loop — all in ~2,000 lines of hand-written x86 Assembly.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0a0a12;--ink:#e8f7ff;--muted:#8f9bc0;--I:#00e5ff;--O:#ffd23f;--T:#b14dff;--S:#34e36b;--Z:#ff3b6b;--L:#ff9f1c;--J:#3b6bff;--line:rgba(255,255,255,.1)}
+  *{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;line-height:1.6;overflow-x:hidden}
+  a{color:inherit;text-decoration:none}
+  .bg{position:fixed;inset:0;z-index:0;background:radial-gradient(800px 600px at 50% -5%,#15152a 0,var(--bg) 60%)}
+  .crt{position:fixed;inset:0;z-index:1;pointer-events:none;background:repeating-linear-gradient(transparent 0 2px,rgba(0,0,0,.18) 2px 4px)}
+  canvas#rain{position:fixed;inset:0;z-index:0;opacity:.32}
+  .wrap{position:relative;z-index:3;max-width:1000px;margin:0 auto;padding:0 24px}
+  header{min-height:92vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:80px 0 36px}
+  .tag{font-family:"VT323";font-size:20px;letter-spacing:3px;color:var(--I);margin-bottom:14px}
+  h1{font-family:"Press Start 2P";font-size:clamp(20px,4.4vw,50px);line-height:1.4;letter-spacing:0}
+  h1 .a{color:var(--I)}h1 .b{color:var(--O)}h1 .c{color:var(--Z)}
+  .lede{font-size:clamp(16px,2vw,20px);color:var(--muted);max-width:600px;margin:26px 0}
+  .cta{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin-top:14px}
+  .btn{font-family:"VT323";font-size:20px;letter-spacing:1px;display:inline-flex;align-items:center;gap:9px;padding:11px 26px;border-radius:4px;transition:.16s;border:2px solid var(--line)}
+  .btn.p{background:var(--I);color:#022;border-color:var(--I);box-shadow:4px 4px 0 #066}.btn.p:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 #066}
+  .btn.g{background:rgba(255,255,255,.05);color:var(--ink)}.btn.g:hover{border-color:var(--O);color:var(--O)}
+  section{padding:44px 0}
+  .lbl{font-family:"VT323";font-size:18px;letter-spacing:3px;color:var(--T);margin-bottom:6px}
+  .ttl{font-family:"Press Start 2P";font-size:clamp(13px,2.2vw,20px);line-height:1.6;margin-bottom:28px}
+  .score{font-family:"Press Start 2P";font-size:clamp(20px,5vw,52px);color:var(--O);text-shadow:0 0 18px rgba(255,210,63,.4);text-align:center;margin:6px 0 4px}
+  .scl{text-align:center;color:var(--muted);font-family:"VT323";font-size:20px;letter-spacing:2px;margin-bottom:10px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+  .c{background:rgba(20,20,40,.6);border:2px solid var(--line);border-radius:6px;padding:22px;transition:.18s}
+  .c:hover{transform:translateY(-4px);border-color:var(--I)}
+  .c .k{font-family:"VT323";font-size:20px;color:var(--I);letter-spacing:1px}
+  .c h3{font-size:16px;margin:2px 0 8px}.c p{font-size:14px;color:var(--muted)}
+  pre{font-family:"VT323";font-size:18px;line-height:1.5;background:#06060e;border:2px solid var(--line);border-radius:6px;padding:18px;color:#9ef7c0;overflow-x:auto;margin-top:8px}
+  footer{border-top:2px solid var(--line);margin-top:50px;padding:36px 0 56px;text-align:center;color:var(--muted);font-family:"VT323";font-size:19px;letter-spacing:1px}
+  footer a{color:var(--I)}.fl{display:flex;gap:18px;justify-content:center;flex-wrap:wrap;margin-bottom:12px}
+</style></head>
+<body>
+<div class="bg"></div><canvas id="rain"></canvas><div class="crt"></div>
+<div class="wrap">
+  <header>
+    <div class="tag">~2,000 LINES OF HAND-WRITTEN ASM</div>
+    <h1><span class="a">TETRIS</span> <span class="b">AI</span><br><span class="c">in x86 assembly</span></h1>
+    <p class="lede">A fully playable Tetris with a self-learning heuristic AI, an adversarial "Hell Mode" that feeds you the worst piece, and a gradient-free training loop — every array access and jump hand-translated to registers.</p>
+    <div class="cta">
+      <a class="btn p" href="demo.html">▶ BROWSER AI DEMO</a>
+      <a class="btn g" href="https://youtu.be/qrmSmP2yMEo">🎥 YOUTUBE DEMO</a>
+      <a class="btn g" href="https://github.com/woodyhoko/Tetris_AI#readme">📖 DOCS</a>
+    </div>
+  </header>
+
+  <section>
+    <div class="score">50,000</div>
+    <div class="scl">AVG LINES CLEARED — NO PREVIEW, NO HOLD</div>
+  </section>
+
+  <section>
+    <div class="lbl">// FOUR MODES</div>
+    <div class="ttl">NORMAL · AUTO · HELL · TRAIN</div>
+    <div class="grid">
+      <div class="c"><div class="k">AUTO</div><h3>Exhaustive search</h3><p>For every rotation × column (40 placements) the AI scores the resulting board and plays the max — sub-millisecond at x86 speeds.</p></div>
+      <div class="c"><div class="k">HELL MODE</div><h3>Adversarial pieces</h3><p>A one-level minimax: the generator picks the piece that minimizes the AI's best achievable score.</p></div>
+      <div class="c"><div class="k">TRAIN</div><h3>(1+1)-ES hill climber</h3><p>Perturb one weight, self-play N games, keep the change only if the average score improves.</p></div>
+      <div class="c"><div class="k">BOARD</div><h3>Bit-packed rows</h3><p>10×20 grid as 20 words; a full row is one <span style="color:var(--O)">CMP reg, 0x3FF</span> instruction.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="lbl">// HEURISTIC</div>
+    <div class="ttl">FOUR FEATURES, INTEGER MATH</div>
+    <pre>score = w1·lines_cleared      ; reward
+      − w2·holes              ; w1=76  w2=36
+      − w3·bumpiness          ; w3=18  w4=51  (×100)
+      − w4·aggregate_height   ; El-Tetris weights</pre>
+  </section>
+
+  <footer>
+    <div class="fl"><a href="demo.html">DEMO</a><a href="https://youtu.be/qrmSmP2yMEo">YOUTUBE</a><a href="https://github.com/woodyhoko/Tetris_AI">GITHUB</a><a href="https://github.com/woodyhoko/Tetris_AI#readme">README</a></div>
+    BUILT BY <a href="https://github.com/woodyhoko">woodyhoko</a> · TETRIS AI IN X86 ASSEMBLY
+  </footer>
+</div>
+<script>
+  // falling tetromino glyph rain
+  const cv=document.getElementById('rain'),x=cv.getContext('2d');let W,H,cols,drops=[];
+  const cs=["#00e5ff","#ffd23f","#b14dff","#34e36b","#ff3b6b","#ff9f1c","#3b6bff"],gl=["▦","▩","◫","■","▥"];
+  function rs(){W=cv.width=innerWidth;H=cv.height=innerHeight;cols=Math.floor(W/26);drops=Array(cols).fill(0).map(()=>Math.random()*-H);}
+  rs();addEventListener('resize',rs);
+  function tick(){x.fillStyle="rgba(10,10,18,.18)";x.fillRect(0,0,W,H);x.font="20px monospace";
+    for(let i=0;i<cols;i++){x.fillStyle=cs[i%cs.length];x.fillText(gl[i%gl.length],i*26+4,drops[i]);drops[i]+=6+(i%3);if(drops[i]>H+20)drops[i]=Math.random()*-200;}
+    requestAnimationFrame(tick);}
+  tick();
+</script>
+</body></html>
