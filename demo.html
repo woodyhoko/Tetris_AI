@@ -33,6 +33,7 @@
   .btn-p:hover{filter:brightness(1.08);transform:translateY(-1px)}
   .btn-s{background:#1d2330;color:var(--ink);border:1px solid var(--line)}
   .btn-s:hover{background:#252c3c}
+  .btn-s.on{background:linear-gradient(90deg,var(--a3),var(--a2));color:#0a1020;border-color:transparent;box-shadow:0 4px 14px rgba(56,189,248,.3)}
   .lc-wrap{position:relative}
   canvas#curve{width:100%;display:block;border-radius:8px;background:#0a0d17;border:1px solid var(--line)}
   .legend{font-size:10.5px;color:var(--muted);margin-top:6px}
@@ -65,7 +66,7 @@
 
       <div class="card">
         <div class="btnrow" style="margin-bottom:8px"><button class="btn-p" id="trainBtn">🧠 Start Learning</button></div>
-        <div class="btnrow"><button class="btn-s" id="resetBtn">↺ Reset (forget)</button></div>
+        <div class="btnrow"><button class="btn-s" id="resetBtn">↺ Reset (forget)</button><button class="btn-s" id="turboBtn">⏩ Turbo</button></div>
         <div class="speed"><span>Play speed</span><input id="speed" type="range" min="0" max="100" value="55"></div>
       </div>
 
@@ -160,26 +161,76 @@ function playHeadless(W,maxPieces,seed){
 }
 
 // ---- evolutionary learner: (1+λ) ES on the 4 weights ----
-// MAXP is the per-game piece budget. The max lines a game can possibly clear is
-// MAXP*4/COLS, so a small budget artificially caps fitness (70 pieces -> 28 lines);
-// a strong agent only tops out far beyond that, so we give it real room to run.
-const MAXP=400, GAMES=2, LAMBDA=4, SEEDS=[101,202];
+// MAXP is the per-game piece budget; the most lines a game can possibly clear is MAXP*4/COLS.
+// A small budget therefore caps fitness regardless of skill (70 pieces -> 28, 400 -> 160).
+// A strong heuristic agent essentially never tops out, so to let "Best fitness" reflect real
+// skill (1000+ lines) each game gets ~3000 pieces (up to ~1200 lines). That is far too much
+// work to run on the main thread without freezing the live game, so the whole evolutionary
+// loop runs off-thread in a Web Worker — the main thread only renders and shows results.
+const MAXP=3000, GAMES=2, LAMBDA=3, SEEDS=[101,202], FALLBACK_MAXP=800;
 let champ={l:Math.random()*0.4,h:Math.random()*0.4,b:Math.random()*0.4,g:Math.random()*0.4};
-let champFit=-1, gen=0, sigma=0.35, curve=[], training=false, trainTimer=null;
+let champFit=0, gen=0, curve=[], training=false, esWorker=null;
 
-function fitness(W){let s=0;for(let i=0;i<GAMES;i++)s+=playHeadless(W,MAXP,SEEDS[i]+gen*0);return s/GAMES;}
-function mutate(W){const m=v=>Math.max(0,Math.min(1.5,v+(Math.random()*2-1)*sigma));return {l:m(W.l),h:m(W.h),b:m(W.b),g:m(W.g)};}
+function adoptGen(d){                                  // apply a generation result (from worker or fallback)
+  gen=d.gen; champ=d.champ; champFit=d.champFit;
+  curve.push(champFit); liveW={...champ};
+  updateLearnUI(); drawCurve();
+}
 
-function trainGeneration(){
+// Build the worker from the exact same pure helpers the live game uses (serialized via
+// toString), so the headless evaluation can never drift from the on-screen rules.
+function buildWorkerSource(){
+  return `
+const COLS=${COLS},ROWS=${ROWS},MAXP=${MAXP},GAMES=${GAMES},LAMBDA=${LAMBDA},SEEDS=${JSON.stringify(SEEDS)};
+const PIECES=${JSON.stringify(PIECES)};
+const rotate=${rotate};
+const mulberry32=${mulberry32};
+const newBoard=${newBoard};
+const collideOn=${collideOn};
+const clearLinesOn=${clearLinesOn};
+const features=${features};
+const scoreBoard=${scoreBoard};
+const bestMoveOn=${bestMoveOn};
+const playHeadless=${playHeadless};
+let champ=null,champFit=-1,gen=0,sigma=0.35,running=false;
+const fitness=W=>{let s=0;for(let i=0;i<GAMES;i++)s+=playHeadless(W,MAXP,SEEDS[i]);return s/GAMES;};
+const mutate=W=>{const m=v=>Math.max(0,Math.min(1.5,v+(Math.random()*2-1)*sigma));return {l:m(W.l),h:m(W.h),b:m(W.b),g:m(W.g)};};
+function gener(){
   if(champFit<0)champFit=fitness(champ);
   let bestW=champ,bestF=champFit;
   for(let k=0;k<LAMBDA;k++){const c=mutate(champ);const f=fitness(c);if(f>bestF){bestF=f;bestW=c;}}
-  champ=bestW; champFit=bestF; gen++;
-  sigma=Math.max(0.06,sigma*0.97);
-  curve.push(champFit);
-  liveW={...champ};                                 // live game adopts the new champion
-  updateLearnUI(); drawCurve();
+  champ=bestW;champFit=bestF;gen++;sigma=Math.max(0.06,sigma*0.97);
+  postMessage({gen,champ,champFit});
 }
+function run(){ if(!running)return; gener(); setTimeout(run,0); }
+onmessage=e=>{const d=e.data;
+  if(d.cmd==='reset'){champ=d.champ;champFit=-1;gen=0;sigma=0.35;}
+  else if(d.cmd==='start'){ if(!running){running=true;run();} }
+  else if(d.cmd==='pause'){ running=false; }
+};`;
+}
+function initWorker(){
+  try{
+    const w=new Worker(URL.createObjectURL(new Blob([buildWorkerSource()],{type:'application/javascript'})));
+    w.onmessage=e=>adoptGen(e.data);
+    w.onerror=()=>{ esWorker=null; if(training) fbRun(); };   // degrade to main-thread on failure
+    w.postMessage({cmd:'reset',champ});
+    return w;
+  }catch(err){ return null; }
+}
+
+// Main-thread fallback (e.g. Workers blocked): same ES at a smaller budget so it can't freeze.
+let fbSigma=0.35, fbTimer=null;
+function fbFit(W){let s=0;for(let i=0;i<GAMES;i++)s+=playHeadless(W,FALLBACK_MAXP,SEEDS[i]);return s/GAMES;}
+function fbMut(W){const m=v=>Math.max(0,Math.min(1.5,v+(Math.random()*2-1)*fbSigma));return {l:m(W.l),h:m(W.h),b:m(W.b),g:m(W.g)};}
+function fbGen(){
+  if(champFit<=0)champFit=fbFit(champ);
+  let bestW=champ,bestF=champFit;
+  for(let k=0;k<LAMBDA;k++){const c=fbMut(champ);const f=fbFit(c);if(f>bestF){bestF=f;bestW=c;}}
+  fbSigma=Math.max(0.06,fbSigma*0.97);
+  adoptGen({gen:gen+1,champ:bestW,champFit:bestF});
+}
+function fbRun(){ if(!training)return; fbGen(); fbTimer=setTimeout(fbRun,70); }
 
 function updateLearnUI(){
   document.getElementById('gen').textContent=gen;
@@ -259,12 +310,22 @@ function draw(){
   }
 }
 
-// timing — smooth per-frame fall whose speed follows the slider
-let speed=55, last=0, liveRAF=null;
+// One instant piece placement (no fall animation) — used by Turbo to blaze through games.
+function fastStep(){
+  if(livePhase==='clearing'){ lLines+=clearLinesOn(lb); livePhase='falling'; updateBoardAnalysis(); liveSpawn(); return; }
+  lfall=ltargetY; liveLock();
+}
+
+// timing — slider ramps the fall speed (quadratic, so the top end is fast); Turbo runs many placements per frame.
+let speed=55, turbo=false, last=0, liveRAF=null;
 function loop(ts){
   const dt=Math.min(50,ts-last); last=ts;
-  if(livePhase==='falling'){
-    lfall += (2.5+speed*0.55)*dt/1000;                 // rows per second
+  if(turbo){
+    for(let i=0;i<24;i++) fastStep();                  // ~1400 pieces/s — lines fly up
+    document.getElementById('lines').textContent=lLines;
+    document.getElementById('pieces').textContent=lPieces;
+  } else if(livePhase==='falling'){
+    lfall += (3+(speed/100)*(speed/100)*300)*dt/1000;  // rows per second: 3 → ~303 across the slider
     if(lfall>=ltargetY){ lfall=ltargetY; liveLock(); }
   } else if(livePhase==='clearing'){
     clearTimer+=dt;
@@ -275,23 +336,32 @@ function loop(ts){
 }
 
 document.getElementById('speed').oninput=e=>speed=+e.target.value;
+document.getElementById('turboBtn').onclick=e=>{
+  turbo=!turbo;
+  e.currentTarget.classList.toggle('on',turbo);
+  e.currentTarget.textContent=turbo?'⏸ Turbo on':'⏩ Turbo';
+};
 
 function startTraining(){
   training=!training;
   const btn=document.getElementById('trainBtn'), ph=document.getElementById('phase');
   btn.textContent=training?'⏸ Pause Learning':'🧠 Resume Learning';
   ph.textContent=training?'learning…':'paused';
-  if(training){ const tick=()=>{ if(!training)return; trainGeneration(); trainTimer=setTimeout(tick,90); }; tick(); }
-  else clearTimeout(trainTimer);
+  if(training){ if(esWorker) esWorker.postMessage({cmd:'start'}); else fbRun(); }
+  else { if(esWorker) esWorker.postMessage({cmd:'pause'}); else clearTimeout(fbTimer); }
 }
 document.getElementById('trainBtn').onclick=startTraining;
 document.getElementById('resetBtn').onclick=()=>{
-  training=false;clearTimeout(trainTimer);document.getElementById('trainBtn').textContent='🧠 Start Learning';document.getElementById('phase').textContent='idle';
+  training=false; clearTimeout(fbTimer);
+  document.getElementById('trainBtn').textContent='🧠 Start Learning';document.getElementById('phase').textContent='idle';
   champ={l:Math.random()*0.4,h:Math.random()*0.4,b:Math.random()*0.4,g:Math.random()*0.4};
-  champFit=-1;gen=0;sigma=0.35;curve=[];liveW={...champ};updateLearnUI();drawCurve();liveReset();
+  champFit=0;gen=0;fbSigma=0.35;curve=[];liveW={...champ};
+  if(esWorker){ esWorker.postMessage({cmd:'pause'}); esWorker.postMessage({cmd:'reset',champ}); }
+  updateLearnUI();drawCurve();liveReset();
 };
 
 // boot
+esWorker=initWorker();
 liveReset(); updateLearnUI(); drawCurve();
 last=performance.now(); loop(last);
 window.addEventListener('resize',drawCurve);
