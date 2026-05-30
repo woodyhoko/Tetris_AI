@@ -3,202 +3,263 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tetris AI — Heuristic Evaluation Demo</title>
+<title>Tetris AI — Self-Learning Heuristic Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  :root{--bg:#0b0d16;--pan:#141826;--pan2:#0f1320;--line:#242b3d;--ink:#e7ecf6;--muted:#8b96ab;
+        --a1:#ff6b9d;--a2:#a78bfa;--a3:#38bdf8;--good:#34d399;--bad:#fb7185;--warn:#fbbf24}
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:#0d1117;color:#e6edf3;font-family:"Segoe UI",system-ui,sans-serif;padding:20px;min-height:100vh}
-  h1{font-size:20px;margin-bottom:4px;color:#ff6b6b}
-  .sub{color:#8b949e;font-size:13px;margin-bottom:20px}
-  .layout{display:flex;gap:20px;flex-wrap:wrap}
+  body{background:radial-gradient(1100px 600px at 80% -10%,#1a1430 0,var(--bg) 55%) fixed,var(--bg);
+       color:var(--ink);font-family:Inter,system-ui,sans-serif;padding:24px 18px 40px;min-height:100vh;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1100px;margin:0 auto}
+  h1{font-family:Orbitron;font-size:23px;font-weight:800;letter-spacing:.01em;
+     background:linear-gradient(90deg,var(--a1),var(--a2) 55%,var(--a3));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--muted);font-size:13.5px;line-height:1.6;max-width:780px;margin:6px 0 20px}
+  .sub b{color:var(--ink)}
+  .layout{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
   #board-wrap{flex:0 0 auto}
-  canvas#board{display:block;border:2px solid #30363d;border-radius:8px;background:#0a0a0c}
-  .sidebar{flex:1;min-width:220px;display:flex;flex-direction:column;gap:12px}
-  .card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:14px}
-  h2{font-size:12px;color:#8b949e;margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
-  .stat{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px dashed rgba(255,255,255,.06)}
+  canvas#board{display:block;border:1px solid var(--line);border-radius:10px;background:#070910;box-shadow:0 16px 50px rgba(0,0,0,.5)}
+  .sidebar{flex:1;min-width:240px;display:flex;flex-direction:column;gap:14px}
+  .card{background:linear-gradient(180deg,var(--pan),var(--pan2));border:1px solid var(--line);border-radius:14px;padding:15px 16px}
+  h2{font-size:11px;color:var(--muted);margin-bottom:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+  .stat{display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)}
   .stat:last-child{border-bottom:none}
-  .stat b{color:#ff6b6b;font-variant-numeric:tabular-nums}
-  button{width:100%;padding:9px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;transition:.15s;margin-bottom:6px}
-  .btn-p{background:#ff6b6b;color:#0d1117}
-  .btn-p:hover{filter:brightness(1.08)}
-  .btn-s{background:#21262d;color:#e6edf3}
-  .btn-s:hover{background:#2d333b}
-  .heuristic{font-size:12px;margin-bottom:6px}
-  .h-label{color:#8b949e;margin-bottom:2px}
-  .h-bar-wrap{height:8px;background:#0d1117;border-radius:4px;overflow:hidden}
-  .h-bar{height:100%;border-radius:4px;transition:width .3s}
-  label{font-size:11px;color:#8b949e;display:block;margin-top:8px;margin-bottom:2px}
-  input[type=range]{width:100%;accent-color:#ff6b6b}
-  .hell-note{font-size:11px;color:#f85149;margin-top:6px;padding:6px 8px;background:#f8514910;border-radius:6px;border:1px solid #f8514930}
+  .stat b{font-variant-numeric:tabular-nums}
+  .stat b.g{color:var(--good)}.stat b.a{color:var(--a2)}.stat b.b{color:var(--a3)}
+  .btnrow{display:flex;gap:8px}
+  button{flex:1;padding:11px 8px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:700;transition:.15s;font-family:Inter}
+  .btn-p{background:linear-gradient(90deg,var(--a1),var(--a2));color:#160a1f;box-shadow:0 6px 18px rgba(167,139,250,.3)}
+  .btn-p:hover{filter:brightness(1.08);transform:translateY(-1px)}
+  .btn-s{background:#1d2330;color:var(--ink);border:1px solid var(--line)}
+  .btn-s:hover{background:#252c3c}
+  .lc-wrap{position:relative}
+  canvas#curve{width:100%;display:block;border-radius:8px;background:#0a0d17;border:1px solid var(--line)}
+  .legend{font-size:10.5px;color:var(--muted);margin-top:6px}
+  .w-row{font-size:12px;margin-bottom:9px}
+  .w-row .lab{display:flex;justify-content:space-between;color:var(--muted);margin-bottom:3px}
+  .w-row .lab b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .w-bar{height:7px;background:#0a0d17;border-radius:4px;overflow:hidden}
+  .w-bar i{display:block;height:100%;border-radius:4px;transition:width .4s}
+  .speed{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);margin-top:4px}
+  .speed input{flex:1;accent-color:var(--a2)}
+  .pill{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+        padding:3px 9px;border-radius:99px;background:rgba(167,139,250,.16);color:var(--a2)}
+  @media(max-width:560px){#board-wrap{margin:0 auto}.layout{justify-content:center}}
 </style>
 </head>
 <body>
-<h1>Tetris AI — x86 ASM Heuristic Engine</h1>
-<p class="sub">Browser port of the heuristic evaluation function. The AI scores every possible placement and picks the best — just like the x86 Assembly original.</p>
+<div class="wrap">
+  <h1>TETRIS AI · Self-Learning Agent</h1>
+  <p class="sub">The agent scores every possible placement with a weighted heuristic (lines, holes, bumpiness, height) — but it isn't told the weights. It <b>learns them by evolution</b>: each generation it mutates the current champion, plays fast headless games, and keeps whatever clears more lines. Watch the <b>learning curve climb</b> and the live agent get noticeably better.</p>
 
-<div class="layout">
-  <div id="board-wrap">
-    <canvas id="board"></canvas>
-  </div>
-  <div class="sidebar">
-    <div class="card">
-      <div class="stat"><span>Lines cleared</span><b id="lines">0</b></div>
-      <div class="stat"><span>Score</span><b id="score">0</b></div>
-      <div class="stat"><span>Pieces placed</span><b id="pieces">0</b></div>
-      <div class="stat"><span>Mode</span><b id="mode">Auto AI</b></div>
-    </div>
-    <div class="card">
-      <button class="btn-p" id="startBtn">▶ Start AI</button>
-      <button class="btn-s" id="hellBtn">👹 Hell Mode ON</button>
-      <button class="btn-s" id="resetBtn">↺ Reset</button>
-    </div>
-    <div class="card">
-      <h2>Heuristic Weights</h2>
-      <label>Lines weight: <span id="lw">0.76</span></label>
-      <input id="lineW" type="range" min="0" max="100" value="76">
-      <label>Holes penalty: <span id="hw">0.36</span></label>
-      <input id="holeW" type="range" min="0" max="100" value="36">
-      <label>Bumpiness penalty: <span id="bw">0.18</span></label>
-      <input id="bumpW" type="range" min="0" max="100" value="18">
-      <label>Height penalty: <span id="hgw">0.51</span></label>
-      <input id="heightW" type="range" min="0" max="100" value="51">
-    </div>
-    <div class="card">
-      <h2>Board Analysis</h2>
-      <div class="heuristic"><div class="h-label">Lines ready</div><div class="h-bar-wrap"><div class="h-bar" id="bar-lines" style="background:#3fb950;width:0%"></div></div></div>
-      <div class="heuristic"><div class="h-label">Holes count</div><div class="h-bar-wrap"><div class="h-bar" id="bar-holes" style="background:#f85149;width:0%"></div></div></div>
-      <div class="heuristic"><div class="h-label">Bumpiness</div><div class="h-bar-wrap"><div class="h-bar" id="bar-bump" style="background:#d29922;width:0%"></div></div></div>
-      <div class="heuristic"><div class="h-label">Max height</div><div class="h-bar-wrap"><div class="h-bar" id="bar-height" style="background:#58a6ff;width:0%"></div></div></div>
-      <div class="hell-note" id="hell-note" style="display:none">👹 Hell Mode: picking the WORST piece for you this turn</div>
+  <div class="layout">
+    <div id="board-wrap"><canvas id="board"></canvas></div>
+    <div class="sidebar">
+      <div class="card">
+        <div class="stat"><span>Generation</span><b class="a" id="gen">0</b></div>
+        <div class="stat"><span>Best fitness (avg lines)</span><b class="g" id="fit">0.0</b></div>
+        <div class="stat"><span>Live game · lines</span><b id="lines">0</b></div>
+        <div class="stat"><span>Live game · pieces</span><b id="pieces">0</b></div>
+      </div>
+
+      <div class="card">
+        <div class="btnrow" style="margin-bottom:8px"><button class="btn-p" id="trainBtn">🧠 Start Learning</button></div>
+        <div class="btnrow"><button class="btn-s" id="resetBtn">↺ Reset (forget)</button></div>
+        <div class="speed"><span>Play speed</span><input id="speed" type="range" min="0" max="100" value="55"></div>
+      </div>
+
+      <div class="card">
+        <h2>Learning curve <span class="pill" id="phase">idle</span></h2>
+        <div class="lc-wrap"><canvas id="curve" height="120"></canvas></div>
+        <div class="legend">Best avg lines cleared per generation — should trend upward as the weights improve.</div>
+      </div>
+
+      <div class="card">
+        <h2>Evolved weights (learned)</h2>
+        <div class="w-row"><div class="lab">Line-clear reward <b id="wl">—</b></div><div class="w-bar"><i id="bl" style="background:var(--good);width:0%"></i></div></div>
+        <div class="w-row"><div class="lab">Hole penalty <b id="wh">—</b></div><div class="w-bar"><i id="bh" style="background:var(--bad);width:0%"></i></div></div>
+        <div class="w-row"><div class="lab">Bumpiness penalty <b id="wb">—</b></div><div class="w-bar"><i id="bb" style="background:var(--warn);width:0%"></i></div></div>
+        <div class="w-row"><div class="lab">Height penalty <b id="wg">—</b></div><div class="w-bar"><i id="bg" style="background:var(--a3);width:0%"></i></div></div>
+      </div>
+
+      <div class="card">
+        <h2>Live board analysis</h2>
+        <div class="w-row"><div class="lab">Holes <b id="mHoles">0</b></div><div class="w-bar"><i id="bar-holes" style="background:var(--bad);width:0%"></i></div></div>
+        <div class="w-row"><div class="lab">Bumpiness <b id="mBump">0</b></div><div class="w-bar"><i id="bar-bump" style="background:var(--warn);width:0%"></i></div></div>
+        <div class="w-row"><div class="lab">Max height <b id="mH">0</b></div><div class="w-bar"><i id="bar-h" style="background:var(--a3);width:0%"></i></div></div>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
-const COLS=10,ROWS=20,CELL=26;
+const COLS=10,ROWS=20,CELL=24;
 const cv=document.getElementById('board'),ctx=cv.getContext('2d');
 const DPR=Math.min(devicePixelRatio||1,2);
 cv.width=COLS*CELL*DPR; cv.height=ROWS*CELL*DPR; cv.style.width=COLS*CELL+'px'; cv.style.height=ROWS*CELL+'px';
 ctx.scale(DPR,DPR);
 
 const PIECES=[
-  {shape:[[1,1,1,1]],color:'#18dcff'},
-  {shape:[[1,1],[1,1]],color:'#ffd166'},
-  {shape:[[0,1,0],[1,1,1]],color:'#a371f7'},
-  {shape:[[1,0],[1,0],[1,1]],color:'#ff6b6b'},
-  {shape:[[0,1],[0,1],[1,1]],color:'#58a6ff'},
-  {shape:[[0,1,1],[1,1,0]],color:'#3fb950'},
-  {shape:[[1,1,0],[0,1,1]],color:'#f85149'},
+  {shape:[[1,1,1,1]],color:'#38bdf8'},
+  {shape:[[1,1],[1,1]],color:'#fbbf24'},
+  {shape:[[0,1,0],[1,1,1]],color:'#a78bfa'},
+  {shape:[[1,0],[1,0],[1,1]],color:'#ff6b9d'},
+  {shape:[[0,1],[0,1],[1,1]],color:'#60a5fa'},
+  {shape:[[0,1,1],[1,1,0]],color:'#34d399'},
+  {shape:[[1,1,0],[0,1,1]],color:'#fb7185'},
 ];
+const rotate=s=>s[0].map((_,c)=>s.map(r=>r[c]).reverse());
+const mulberry32=a=>()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
 
-let board,piece,px,py,score,lines,pieces,running=false,hellMode=false,raf=null,dropTimer=0;
-let LW=0.76,HW=0.36,BW=0.18,HGW=0.51;
-
-function init(){board=Array.from({length:ROWS},()=>new Array(COLS).fill(0));score=0;lines=0;pieces=0;spawnPiece();updateStats();}
-
-function rotate(s){return s[0].map((_,c)=>s.map(r=>r[c]).reverse());}
-function spawnPiece(){
-  piece={...PIECES[(Math.random()*PIECES.length)|0]};
-  piece.shape=[...piece.shape.map(r=>[...r])];
-  px=Math.floor((COLS-piece.shape[0].length)/2);py=0;
-  if(collide(piece.shape,px,py)){running=false;document.getElementById('startBtn').textContent='▶ Start AI';return false;}
-  return true;
+// ---- pure board helpers (operate on a passed board) ----
+const newBoard=()=>Array.from({length:ROWS},()=>new Array(COLS).fill(0));
+function collideOn(b,s,ox,oy){return s.some((r,y)=>r.some((v,x)=>v&&(b[oy+y]===undefined||b[oy+y][ox+x]!==0)));}
+function clearLinesOn(b){let c=0;for(let y=ROWS-1;y>=0;y--){if(b[y].every(v=>v)){b.splice(y,1);b.unshift(new Array(COLS).fill(0));c++;y++;}}return c;}
+function features(b){
+  const h=Array.from({length:COLS},(_,c)=>{for(let r=0;r<ROWS;r++)if(b[r][c])return ROWS-r;return 0;});
+  let holes=0;h.forEach((hh,c)=>{for(let r=ROWS-hh;r<ROWS;r++)if(!b[r][c])holes++;});
+  const bump=h.slice(1).reduce((s,v,i)=>s+Math.abs(v-h[i]),0);
+  const agg=h.reduce((a,v)=>a+v,0); const maxH=Math.max(...h);
+  return {holes,bump,agg,maxH};
 }
-function collide(s,ox,oy){return s.some((r,y)=>r.some((v,x)=>v&&(board[oy+y]===undefined||board[oy+y][ox+x]!==0)));}
-function place(){piece.shape.forEach((r,y)=>r.forEach((v,x)=>{if(v)board[py+y][px+x]=piece.color;}));clearLines();pieces++;if(!spawnPiece())running=false;updateStats();}
-function clearLines(){let cleared=0;for(let y=ROWS-1;y>=0;y--){if(board[y].every(c=>c)){board.splice(y,1);board.unshift(new Array(COLS).fill(0));cleared++;y++;}}lines+=cleared;score+=cleared*cleared*100;updateStats();}
+// Heuristic score of a resulting board (W = learned weight vector).
+function scoreBoard(b,cleared,W){const f=features(b);return W.l*cleared - W.h*f.holes - W.b*f.bump - W.g*f.agg;}
 
-// Heuristic evaluation (mirrors the x86 AI logic / El-Tetris feature set).
-// Scored on the resulting board AFTER the piece lands and full lines clear,
-// plus a reward for the number of lines that clear ("cleared").
-function evaluate(b,cleared){
-  const heights=Array.from({length:COLS},(_,c)=>{for(let r=0;r<ROWS;r++)if(b[r][c])return ROWS-r;return 0;});
-  const aggH=heights.reduce((a,h)=>a+h,0);
-  let holes=0;heights.forEach((h,c)=>{for(let r=ROWS-h;r<ROWS;r++)if(!b[r][c])holes++;});
-  const bump=heights.slice(1).reduce((s,h,i)=>s+Math.abs(h-heights[i]),0);
-  return LW*cleared - HW*holes - BW*bump - HGW*aggH;
-}
-function boardMetrics(b){
-  const heights=Array.from({length:COLS},(_,c)=>{for(let r=0;r<ROWS;r++)if(b[r][c])return ROWS-r;return 0;});
-  let holes=0;heights.forEach((h,c)=>{for(let r=ROWS-h;r<ROWS;r++)if(!b[r][c])holes++;});
-  const bump=heights.slice(1).reduce((s,h,i)=>s+Math.abs(h-heights[i]),0);
-  return{holes,bump,maxH:Math.max(...heights)};
-}
-
-function bestMove(p){
-  let best={score:-Infinity,shape:null,x:0};
-  let shape=p.shape;
+// Best placement of a piece on board b given weights W. Returns {shape,x,y,cleared,score} or null.
+function bestMoveOn(b,shape0,color,W){
+  let best=null, shape=shape0;
   for(let rot=0;rot<4;rot++){
     for(let x=-2;x<COLS;x++){
-      let y=0;while(!collide(shape,x,y+1))y++;
-      if(collide(shape,x,y))continue;
-      const nb=board.map(r=>[...r]);
-      shape.forEach((r,dy)=>r.forEach((v,dx)=>{if(v&&nb[y+dy])nb[y+dy][x+dx]=p.color;}));
-      let cl=0;for(let ry=ROWS-1;ry>=0;ry--)if(nb[ry].every(c=>c)){nb.splice(ry,1);nb.unshift(new Array(COLS).fill(0));cl++;ry++;}
-      const sc=evaluate(nb,cl);
-      if(sc>best.score){best={score:sc,shape,x,y,cleared:cl};}
+      if(collideOn(b,shape,x,0))continue;
+      let y=0;while(!collideOn(b,shape,x,y+1))y++;
+      const nb=b.map(r=>r.slice());
+      let ok=true;
+      shape.forEach((r,dy)=>r.forEach((v,dx)=>{if(v){if(nb[y+dy]===undefined){ok=false;}else nb[y+dy][x+dx]=color;}}));
+      if(!ok)continue;
+      const cl=clearLinesOn(nb);
+      const sc=scoreBoard(nb,cl,W);
+      if(!best||sc>best.score)best={shape,x,y,cleared:cl,score:sc};
     }
     shape=rotate(shape);
   }
   return best;
 }
 
-function worstPiece(){
-  let worst={score:Infinity,piece:null};
-  PIECES.forEach(p=>{const best=bestMove({...p,shape:p.shape.map(r=>[...r])});if(best.score<worst.score){worst={score:best.score,piece:p};}});
-  return worst.piece;
+// ---- headless game: play with weights W, fixed piece sequence (seed). Returns lines cleared. ----
+function playHeadless(W,maxPieces,seed){
+  const rng=mulberry32(seed); const b=newBoard(); let lines=0;
+  for(let p=0;p<maxPieces;p++){
+    const pc=PIECES[(rng()*PIECES.length)|0];
+    const mv=bestMoveOn(b,pc.shape.map(r=>r.slice()),pc.color,W);
+    if(!mv)break;                                   // topped out
+    mv.shape.forEach((r,dy)=>r.forEach((v,dx)=>{if(v)b[mv.y+dy][mv.x+dx]=pc.color;}));
+    lines+=clearLinesOn(b);
+  }
+  return lines;
 }
 
-function aiStep(){
-  if(hellMode&&pieces%3===0){const wp=worstPiece();piece.shape=wp.shape.map(r=>[...r]);piece.color=wp.color;document.getElementById('hell-note').style.display='block';}else{document.getElementById('hell-note').style.display='none';}
-  const mv=bestMove(piece);
-  if(!mv.shape){place();return;}
-  piece.shape=mv.shape;px=mv.x;
-  let y=0;while(!collide(piece.shape,px,y+1))y++;py=y;
-  place();
+// ---- evolutionary learner: (1+λ) ES on the 4 weights ----
+const MAXP=70, GAMES=2, LAMBDA=5, SEEDS=[101,202];
+let champ={l:Math.random()*0.4,h:Math.random()*0.4,b:Math.random()*0.4,g:Math.random()*0.4};
+let champFit=-1, gen=0, sigma=0.35, curve=[], training=false, trainTimer=null;
+
+function fitness(W){let s=0;for(let i=0;i<GAMES;i++)s+=playHeadless(W,MAXP,SEEDS[i]+gen*0);return s/GAMES;}
+function mutate(W){const m=v=>Math.max(0,Math.min(1.5,v+(Math.random()*2-1)*sigma));return {l:m(W.l),h:m(W.h),b:m(W.b),g:m(W.g)};}
+
+function trainGeneration(){
+  if(champFit<0)champFit=fitness(champ);
+  let bestW=champ,bestF=champFit;
+  for(let k=0;k<LAMBDA;k++){const c=mutate(champ);const f=fitness(c);if(f>bestF){bestF=f;bestW=c;}}
+  champ=bestW; champFit=bestF; gen++;
+  sigma=Math.max(0.06,sigma*0.97);
+  curve.push(champFit);
+  liveW={...champ};                                 // live game adopts the new champion
+  updateLearnUI(); drawCurve();
 }
 
-function updateStats(){
-  document.getElementById('lines').textContent=lines;
-  document.getElementById('score').textContent=score;
-  document.getElementById('pieces').textContent=pieces;
-  const m=boardMetrics(board);
-  const readyLines=Array.from({length:ROWS},(_,r)=>board[r].filter(Boolean).length===COLS-1?1:0).reduce((a,b)=>a+b,0);
-  document.getElementById('bar-lines').style.width=Math.min(100,readyLines*50)+'%';
-  document.getElementById('bar-holes').style.width=Math.min(100,m.holes*10)+'%';
-  document.getElementById('bar-bump').style.width=Math.min(100,m.bump*5)+'%';
-  document.getElementById('bar-height').style.width=Math.min(100,m.maxH/ROWS*100)+'%';
+function updateLearnUI(){
+  document.getElementById('gen').textContent=gen;
+  document.getElementById('fit').textContent=champFit.toFixed(1);
+  const set=(w,bar,v)=>{document.getElementById(w).textContent=v.toFixed(2);document.getElementById(bar).style.width=Math.min(100,v/1.5*100)+'%';};
+  set('wl','bl',champ.l);set('wh','bh',champ.h);set('wb','bb',champ.b);set('wg','bg',champ.g);
 }
 
+function drawCurve(){
+  const c=document.getElementById('curve'),x=c.getContext('2d');
+  const r=DPR,W=c.clientWidth;c.width=W*r;c.height=120*r;x.setTransform(r,0,0,r,0,0);
+  const H=120,pad={l:26,r:8,t:8,b:16};
+  x.clearRect(0,0,W,H);
+  x.strokeStyle='rgba(255,255,255,.06)';x.lineWidth=1;
+  for(let i=0;i<=3;i++){const y=pad.t+i*(H-pad.t-pad.b)/3;x.beginPath();x.moveTo(pad.l,y);x.lineTo(W-pad.r,y);x.stroke();}
+  if(curve.length<1)return;
+  const mx=Math.max(2,...curve);
+  const X=i=>pad.l+(curve.length<2?0:i/(curve.length-1))*(W-pad.l-pad.r);
+  const Y=v=>pad.t+(1-v/mx)*(H-pad.t-pad.b);
+  // area
+  const g=x.createLinearGradient(0,pad.t,0,H-pad.b);g.addColorStop(0,'rgba(167,139,250,.35)');g.addColorStop(1,'rgba(167,139,250,0)');
+  x.beginPath();x.moveTo(X(0),H-pad.b);curve.forEach((v,i)=>x.lineTo(X(i),Y(v)));x.lineTo(X(curve.length-1),H-pad.b);x.closePath();x.fillStyle=g;x.fill();
+  x.beginPath();curve.forEach((v,i)=>i?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v)));x.strokeStyle='#a78bfa';x.lineWidth=2;x.stroke();
+  x.fillStyle='#8b96ab';x.font='10px ui-monospace,monospace';x.fillText(mx.toFixed(0),3,pad.t+4);x.fillText('0',3,H-pad.b);
+}
+
+// ---- live game (watches the current champion play at visible speed) ----
+let liveW={...champ}, lb,lpiece,lpc,lx,ly,lLines,lPieces,liveRng=mulberry32(7);
+function liveSpawn(){
+  lpc=PIECES[(liveRng()*PIECES.length)|0];
+  lpiece=lpc.shape.map(r=>r.slice()); lx=Math.floor((COLS-lpiece[0].length)/2); ly=0;
+  if(collideOn(lb,lpiece,lx,ly)){ liveReset(); return false; }
+  return true;
+}
+function liveReset(){lb=newBoard();lLines=0;lPieces=0;liveRng=mulberry32((Math.random()*1e9)|0);liveSpawn();}
+function liveStep(){
+  const mv=bestMoveOn(lb,lpc.shape.map(r=>r.slice()),lpc.color,liveW);
+  if(!mv){liveReset();return;}
+  lpiece=mv.shape;lx=mv.x;ly=mv.y;
+  mv.shape.forEach((r,dy)=>r.forEach((v,dx)=>{if(v)lb[ly+dy][lx+dx]=lpc.color;}));
+  lLines+=clearLinesOn(lb);lPieces++;
+  liveSpawn();
+  document.getElementById('lines').textContent=lLines;
+  document.getElementById('pieces').textContent=lPieces;
+  const f=features(lb);
+  document.getElementById('mHoles').textContent=f.holes;document.getElementById('mBump').textContent=f.bump;document.getElementById('mH').textContent=f.maxH;
+  document.getElementById('bar-holes').style.width=Math.min(100,f.holes*9)+'%';
+  document.getElementById('bar-bump').style.width=Math.min(100,f.bump*5)+'%';
+  document.getElementById('bar-h').style.width=Math.min(100,f.maxH/ROWS*100)+'%';
+}
 function draw(){
-  ctx.fillStyle='#0a0a0c';ctx.fillRect(0,0,COLS*CELL,ROWS*CELL);
-  // grid
-  ctx.strokeStyle='#161b22';ctx.lineWidth=.5;
-  for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){ctx.strokeRect(x*CELL,y*CELL,CELL,CELL);}
-  // board
-  board.forEach((row,y)=>row.forEach((c,x)=>{if(c){ctx.fillStyle=c;ctx.fillRect(x*CELL+1,y*CELL+1,CELL-2,CELL-2);ctx.fillStyle=c+'55';ctx.fillRect(x*CELL+1,y*CELL+1,CELL-2,5);}}));
-  // ghost piece
-  if(piece){let gy=py;while(!collide(piece.shape,px,gy+1))gy++;
-  piece.shape.forEach((r,dy)=>r.forEach((v,dx)=>{if(v){ctx.fillStyle=piece.color+'30';ctx.fillRect((px+dx)*CELL+1,(gy+dy)*CELL+1,CELL-2,CELL-2);}}));
-  // active piece
-  piece.shape.forEach((r,dy)=>r.forEach((v,dx)=>{if(v){ctx.fillStyle=piece.color;ctx.fillRect((px+dx)*CELL+1,(py+dy)*CELL+1,CELL-2,CELL-2);ctx.fillStyle=piece.color+'88';ctx.fillRect((px+dx)*CELL+1,(py+dy)*CELL+1,CELL-2,5);}}));}
+  ctx.fillStyle='#070910';ctx.fillRect(0,0,COLS*CELL,ROWS*CELL);
+  ctx.strokeStyle='#11151f';ctx.lineWidth=.5;
+  for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++)ctx.strokeRect(x*CELL,y*CELL,CELL,CELL);
+  lb.forEach((row,y)=>row.forEach((c,x)=>{if(c){ctx.fillStyle=c;ctx.fillRect(x*CELL+1,y*CELL+1,CELL-2,CELL-2);ctx.fillStyle=c+'66';ctx.fillRect(x*CELL+1,y*CELL+1,CELL-2,4);}}));
+  if(lpiece){lpiece.forEach((r,dy)=>r.forEach((v,dx)=>{if(v){ctx.fillStyle=lpc.color;ctx.fillRect((lx+dx)*CELL+1,(ly+dy)*CELL+1,CELL-2,CELL-2);}}));}
 }
 
-let lastTime=0;
-function loop(ts){if(!running)return;const dt=ts-lastTime;lastTime=ts;dropTimer+=dt;if(dropTimer>280){dropTimer=0;aiStep();}draw();raf=requestAnimationFrame(loop);}
+// timing
+let speed=55, acc=0, last=0, liveRAF=null;
+function loop(ts){const dt=ts-last;last=ts;acc+=dt;const interval=320-speed*2.8;if(acc>interval){acc=0;liveStep();}draw();liveRAF=requestAnimationFrame(loop);}
 
-document.getElementById('startBtn').onclick=()=>{
-  if(running){running=false;cancelAnimationFrame(raf);document.getElementById('startBtn').textContent='▶ Start AI';}
-  else{running=true;document.getElementById('startBtn').textContent='⏸ Pause';lastTime=performance.now();loop(lastTime);}
+document.getElementById('speed').oninput=e=>speed=+e.target.value;
+
+function startTraining(){
+  training=!training;
+  const btn=document.getElementById('trainBtn'), ph=document.getElementById('phase');
+  btn.textContent=training?'⏸ Pause Learning':'🧠 Resume Learning';
+  ph.textContent=training?'learning…':'paused';
+  if(training){ const tick=()=>{ if(!training)return; trainGeneration(); trainTimer=setTimeout(tick,90); }; tick(); }
+  else clearTimeout(trainTimer);
+}
+document.getElementById('trainBtn').onclick=startTraining;
+document.getElementById('resetBtn').onclick=()=>{
+  training=false;clearTimeout(trainTimer);document.getElementById('trainBtn').textContent='🧠 Start Learning';document.getElementById('phase').textContent='idle';
+  champ={l:Math.random()*0.4,h:Math.random()*0.4,b:Math.random()*0.4,g:Math.random()*0.4};
+  champFit=-1;gen=0;sigma=0.35;curve=[];liveW={...champ};updateLearnUI();drawCurve();liveReset();
 };
-document.getElementById('hellBtn').onclick=function(){hellMode=!hellMode;this.textContent=hellMode?'👹 Hell Mode OFF':'👹 Hell Mode ON';document.getElementById('mode').textContent=hellMode?'Hell Mode':'Auto AI';};
-document.getElementById('resetBtn').onclick=()=>{running=false;cancelAnimationFrame(raf);document.getElementById('startBtn').textContent='▶ Start AI';init();draw();};
-document.getElementById('lineW').oninput=e=>{LW=e.target.value/100;document.getElementById('lw').textContent=LW.toFixed(2)};
-document.getElementById('holeW').oninput=e=>{HW=e.target.value/100;document.getElementById('hw').textContent=HW.toFixed(2)};
-document.getElementById('bumpW').oninput=e=>{BW=e.target.value/100;document.getElementById('bw').textContent=BW.toFixed(2)};
-document.getElementById('heightW').oninput=e=>{HGW=e.target.value/100;document.getElementById('hgw').textContent=HGW.toFixed(2)};
 
-init();draw();
+// boot
+liveReset(); updateLearnUI(); drawCurve();
+last=performance.now(); loop(last);
+window.addEventListener('resize',drawCurve);
 </script>
 </body>
 </html>
