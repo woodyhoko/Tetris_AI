@@ -108,14 +108,15 @@ function collide(s,ox,oy){return s.some((r,y)=>r.some((v,x)=>v&&(board[oy+y]===u
 function place(){piece.shape.forEach((r,y)=>r.forEach((v,x)=>{if(v)board[py+y][px+x]=piece.color;}));clearLines();pieces++;if(!spawnPiece())running=false;updateStats();}
 function clearLines(){let cleared=0;for(let y=ROWS-1;y>=0;y--){if(board[y].every(c=>c)){board.splice(y,1);board.unshift(new Array(COLS).fill(0));cleared++;y++;}}lines+=cleared;score+=cleared*cleared*100;updateStats();}
 
-// Heuristic evaluation (mirrors the x86 AI logic)
-function evaluate(b){
+// Heuristic evaluation (mirrors the x86 AI logic / El-Tetris feature set).
+// Scored on the resulting board AFTER the piece lands and full lines clear,
+// plus a reward for the number of lines that clear ("cleared").
+function evaluate(b,cleared){
   const heights=Array.from({length:COLS},(_,c)=>{for(let r=0;r<ROWS;r++)if(b[r][c])return ROWS-r;return 0;});
+  const aggH=heights.reduce((a,h)=>a+h,0);
   let holes=0;heights.forEach((h,c)=>{for(let r=ROWS-h;r<ROWS;r++)if(!b[r][c])holes++;});
   const bump=heights.slice(1).reduce((s,h,i)=>s+Math.abs(h-heights[i]),0);
-  const maxH=Math.max(...heights);
-  const readyLines=Array.from({length:ROWS},(_,r)=>b[r].filter(Boolean).length===COLS-1?1:0).reduce((a,b)=>a+b,0);
-  return LW*readyLines - HW*holes - BW*bump - HGW*maxH/ROWS;
+  return LW*cleared - HW*holes - BW*bump - HGW*aggH;
 }
 function boardMetrics(b){
   const heights=Array.from({length:COLS},(_,c)=>{for(let r=0;r<ROWS;r++)if(b[r][c])return ROWS-r;return 0;});
@@ -134,7 +135,7 @@ function bestMove(p){
       const nb=board.map(r=>[...r]);
       shape.forEach((r,dy)=>r.forEach((v,dx)=>{if(v&&nb[y+dy])nb[y+dy][x+dx]=p.color;}));
       let cl=0;for(let ry=ROWS-1;ry>=0;ry--)if(nb[ry].every(c=>c)){nb.splice(ry,1);nb.unshift(new Array(COLS).fill(0));cl++;ry++;}
-      const sc=evaluate(nb)+cl*cl*0.5;
+      const sc=evaluate(nb,cl);
       if(sc>best.score){best={score:sc,shape,x,y,cleared:cl};}
     }
     shape=rotate(shape);
