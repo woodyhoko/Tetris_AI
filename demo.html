@@ -33,7 +33,6 @@
   .btn-p:hover{filter:brightness(1.08);transform:translateY(-1px)}
   .btn-s{background:#1d2330;color:var(--ink);border:1px solid var(--line)}
   .btn-s:hover{background:#252c3c}
-  .btn-s.on{background:linear-gradient(90deg,var(--a3),var(--a2));color:#0a1020;border-color:transparent;box-shadow:0 4px 14px rgba(56,189,248,.3)}
   .lc-wrap{position:relative}
   canvas#curve{width:100%;display:block;border-radius:8px;background:#0a0d17;border:1px solid var(--line)}
   .legend{font-size:10.5px;color:var(--muted);margin-top:6px}
@@ -66,7 +65,7 @@
 
       <div class="card">
         <div class="btnrow" style="margin-bottom:8px"><button class="btn-p" id="trainBtn">🧠 Start Learning</button></div>
-        <div class="btnrow"><button class="btn-s" id="resetBtn">↺ Reset (forget)</button><button class="btn-s" id="turboBtn">⏩ Turbo</button></div>
+        <div class="btnrow"><button class="btn-s" id="resetBtn">↺ Reset (forget)</button></div>
         <div class="speed"><span>Play speed</span><input id="speed" type="range" min="0" max="100" value="55"></div>
       </div>
 
@@ -310,21 +309,11 @@ function draw(){
   }
 }
 
-// One instant piece placement (no fall animation) — used by Turbo to blaze through games.
-function fastStep(){
-  if(livePhase==='clearing'){ lLines+=clearLinesOn(lb); livePhase='falling'; updateBoardAnalysis(); liveSpawn(); return; }
-  lfall=ltargetY; liveLock();
-}
-
-// timing — slider ramps the fall speed (quadratic, so the top end is fast); Turbo runs many placements per frame.
-let speed=55, turbo=false, last=0, liveRAF=null;
+// timing — the slider ramps the fall speed quadratically, so the top end is genuinely fast.
+let speed=55, last=0, liveRAF=null;
 function loop(ts){
   const dt=Math.min(50,ts-last); last=ts;
-  if(turbo){
-    for(let i=0;i<24;i++) fastStep();                  // ~1400 pieces/s — lines fly up
-    document.getElementById('lines').textContent=lLines;
-    document.getElementById('pieces').textContent=lPieces;
-  } else if(livePhase==='falling'){
+  if(livePhase==='falling'){
     lfall += (3+(speed/100)*(speed/100)*300)*dt/1000;  // rows per second: 3 → ~303 across the slider
     if(lfall>=ltargetY){ lfall=ltargetY; liveLock(); }
   } else if(livePhase==='clearing'){
@@ -336,11 +325,6 @@ function loop(ts){
 }
 
 document.getElementById('speed').oninput=e=>speed=+e.target.value;
-document.getElementById('turboBtn').onclick=e=>{
-  turbo=!turbo;
-  e.currentTarget.classList.toggle('on',turbo);
-  e.currentTarget.textContent=turbo?'⏸ Turbo on':'⏩ Turbo';
-};
 
 function startTraining(){
   training=!training;
