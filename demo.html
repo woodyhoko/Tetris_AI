@@ -72,7 +72,7 @@
       <div class="card">
         <h2>Learning curve <span class="pill" id="phase">idle</span></h2>
         <div class="lc-wrap"><canvas id="curve" height="120"></canvas></div>
-        <div class="legend">Best avg lines cleared per generation — should trend upward as the weights improve.</div>
+        <div class="legend">Best avg lines cleared per generation (games of 400 pieces) — should climb into the hundreds as the weights improve.</div>
       </div>
 
       <div class="card">
@@ -160,7 +160,10 @@ function playHeadless(W,maxPieces,seed){
 }
 
 // ---- evolutionary learner: (1+λ) ES on the 4 weights ----
-const MAXP=70, GAMES=2, LAMBDA=5, SEEDS=[101,202];
+// MAXP is the per-game piece budget. The max lines a game can possibly clear is
+// MAXP*4/COLS, so a small budget artificially caps fitness (70 pieces -> 28 lines);
+// a strong agent only tops out far beyond that, so we give it real room to run.
+const MAXP=400, GAMES=2, LAMBDA=4, SEEDS=[101,202];
 let champ={l:Math.random()*0.4,h:Math.random()*0.4,b:Math.random()*0.4,g:Math.random()*0.4};
 let champFit=-1, gen=0, sigma=0.35, curve=[], training=false, trainTimer=null;
 
@@ -203,26 +206,42 @@ function drawCurve(){
   x.fillStyle='#8b96ab';x.font='10px ui-monospace,monospace';x.fillText(mx.toFixed(0),3,pad.t+4);x.fillText('0',3,H-pad.b);
 }
 
-// ---- live game (watches the current champion play at visible speed) ----
-let liveW={...champ}, lb,lpiece,lpc,lx,ly,lLines,lPieces,liveRng=mulberry32(7);
+// ---- live game (watches the current champion play, with a real falling drop) ----
+// livePhase: 'falling' = a piece is animating down toward its target; 'clearing' = full rows flash before collapsing.
+let liveW={...champ}, lb,lpiece,lpc,lx,lfall,ltargetY,lLines,lPieces,liveRng=mulberry32(7);
+let livePhase='falling', clearRows=[], clearTimer=0;
+
+function cellFill(x,y,c){ctx.fillStyle=c;ctx.fillRect(x*CELL+1,y*CELL+1,CELL-2,CELL-2);ctx.fillStyle=c+'66';ctx.fillRect(x*CELL+1,y*CELL+1,CELL-2,4);}
+function cellGhost(x,y,c){ctx.save();ctx.globalAlpha=.3;ctx.strokeStyle=c;ctx.lineWidth=1.5;ctx.strokeRect(x*CELL+2,y*CELL+2,CELL-4,CELL-4);ctx.restore();}
+
 function liveSpawn(){
   lpc=PIECES[(liveRng()*PIECES.length)|0];
-  lpiece=lpc.shape.map(r=>r.slice()); lx=Math.floor((COLS-lpiece[0].length)/2); ly=0;
-  if(collideOn(lb,lpiece,lx,ly)){ liveReset(); return false; }
+  const mv=bestMoveOn(lb,lpc.shape.map(r=>r.slice()),lpc.color,liveW);
+  if(!mv){ liveReset(); return false; }
+  lpiece=mv.shape; lx=mv.x; ltargetY=mv.y;   // land the piece pre-rotated in its chosen column...
+  lfall=-lpiece.length;                       // ...then visibly drop it in from above the board
+  livePhase='falling';
   return true;
 }
-function liveReset(){lb=newBoard();lLines=0;lPieces=0;liveRng=mulberry32((Math.random()*1e9)|0);liveSpawn();}
-function liveStep(){
-  const mv=bestMoveOn(lb,lpc.shape.map(r=>r.slice()),lpc.color,liveW);
-  if(!mv){liveReset();return;}
-  lpiece=mv.shape;lx=mv.x;ly=mv.y;
-  mv.shape.forEach((r,dy)=>r.forEach((v,dx)=>{if(v)lb[ly+dy][lx+dx]=lpc.color;}));
-  lLines+=clearLinesOn(lb);lPieces++;
+function liveReset(){
+  lb=newBoard(); lLines=0; lPieces=0; livePhase='falling'; clearRows=[];
+  liveRng=mulberry32((Math.random()*1e9)|0);
+  document.getElementById('lines').textContent=0;
+  document.getElementById('pieces').textContent=0;
   liveSpawn();
-  document.getElementById('lines').textContent=lLines;
-  document.getElementById('pieces').textContent=lPieces;
+}
+function liveLock(){
+  lpiece.forEach((r,dy)=>r.forEach((v,dx)=>{if(v){const yy=ltargetY+dy;if(yy>=0&&yy<ROWS)lb[yy][lx+dx]=lpc.color;}}));
+  lPieces++; document.getElementById('pieces').textContent=lPieces;
+  clearRows=[]; for(let y=0;y<ROWS;y++)if(lb[y].every(v=>v))clearRows.push(y);
+  if(clearRows.length){ clearTimer=0; livePhase='clearing'; }       // flash the full rows, then collapse them in loop()
+  else { updateBoardAnalysis(); liveSpawn(); }
+}
+function updateBoardAnalysis(){
   const f=features(lb);
-  document.getElementById('mHoles').textContent=f.holes;document.getElementById('mBump').textContent=f.bump;document.getElementById('mH').textContent=f.maxH;
+  document.getElementById('mHoles').textContent=f.holes;
+  document.getElementById('mBump').textContent=f.bump;
+  document.getElementById('mH').textContent=f.maxH;
   document.getElementById('bar-holes').style.width=Math.min(100,f.holes*9)+'%';
   document.getElementById('bar-bump').style.width=Math.min(100,f.bump*5)+'%';
   document.getElementById('bar-h').style.width=Math.min(100,f.maxH/ROWS*100)+'%';
@@ -231,13 +250,29 @@ function draw(){
   ctx.fillStyle='#070910';ctx.fillRect(0,0,COLS*CELL,ROWS*CELL);
   ctx.strokeStyle='#11151f';ctx.lineWidth=.5;
   for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++)ctx.strokeRect(x*CELL,y*CELL,CELL,CELL);
-  lb.forEach((row,y)=>row.forEach((c,x)=>{if(c){ctx.fillStyle=c;ctx.fillRect(x*CELL+1,y*CELL+1,CELL-2,CELL-2);ctx.fillStyle=c+'66';ctx.fillRect(x*CELL+1,y*CELL+1,CELL-2,4);}}));
-  if(lpiece){lpiece.forEach((r,dy)=>r.forEach((v,dx)=>{if(v){ctx.fillStyle=lpc.color;ctx.fillRect((lx+dx)*CELL+1,(ly+dy)*CELL+1,CELL-2,CELL-2);}}));}
+  lb.forEach((row,y)=>row.forEach((c,x)=>{if(c)cellFill(x,y,c);}));
+  if(livePhase==='clearing'){
+    if(Math.floor(clearTimer/55)%2===0){ctx.fillStyle='rgba(255,255,255,.85)';clearRows.forEach(y=>ctx.fillRect(0,y*CELL,COLS*CELL,CELL));}
+  } else if(lpiece){
+    lpiece.forEach((r,dy)=>r.forEach((v,dx)=>{if(v)cellGhost(lx+dx,ltargetY+dy,lpc.color);}));   // ghost target
+    lpiece.forEach((r,dy)=>r.forEach((v,dx)=>{if(v)cellFill(lx+dx,lfall+dy,lpc.color);}));        // falling piece (fractional y)
+  }
 }
 
-// timing
-let speed=55, acc=0, last=0, liveRAF=null;
-function loop(ts){const dt=ts-last;last=ts;acc+=dt;const interval=320-speed*2.8;if(acc>interval){acc=0;liveStep();}draw();liveRAF=requestAnimationFrame(loop);}
+// timing — smooth per-frame fall whose speed follows the slider
+let speed=55, last=0, liveRAF=null;
+function loop(ts){
+  const dt=Math.min(50,ts-last); last=ts;
+  if(livePhase==='falling'){
+    lfall += (2.5+speed*0.55)*dt/1000;                 // rows per second
+    if(lfall>=ltargetY){ lfall=ltargetY; liveLock(); }
+  } else if(livePhase==='clearing'){
+    clearTimer+=dt;
+    if(clearTimer>170){ lLines+=clearLinesOn(lb); document.getElementById('lines').textContent=lLines; livePhase='falling'; updateBoardAnalysis(); liveSpawn(); }
+  }
+  draw();
+  liveRAF=requestAnimationFrame(loop);
+}
 
 document.getElementById('speed').oninput=e=>speed=+e.target.value;
 
